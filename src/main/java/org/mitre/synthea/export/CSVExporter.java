@@ -566,7 +566,7 @@ public class CSVExporter {
     birthDay.setTimeInMillis((long) person.attributes.get(Person.BIRTHDATE));
     String[] gbdMetrics = { QualityOfLifeModule.QALY, QualityOfLifeModule.DALY,
         QualityOfLifeModule.QOLS };
-    String unit = null;
+    String unit;
     for (String score : gbdMetrics) {
       if (score.equals(QualityOfLifeModule.QOLS)) {
         unit = "{score}";

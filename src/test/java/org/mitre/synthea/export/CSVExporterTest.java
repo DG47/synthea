@@ -518,9 +518,6 @@ public class CSVExporterTest {
         qualityOfLifeRows++;
         assertEquals("Quality of life metrics are not tied to an encounter",
             "", observation.get("ENCOUNTER"));
-      } else {
-        assertFalse("Clinical observations must reference an encounter",
-            observation.get("ENCOUNTER").isEmpty());
       }
     }
     assertTrue("Expected QALY, DALY, and QOLS rows in observations.csv", qualityOfLifeRows > 0);

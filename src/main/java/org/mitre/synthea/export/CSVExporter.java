@@ -1256,7 +1256,10 @@ public class CSVExporter {
     } else {
       s.append(',');
     }
-    if (time > encounter.stop) {
+    // For a deceased person, time is the end of the time step in which they died. Their death
+    // certification, and an encounter that ends at their death such as hospice, do not end
+    // before that time, but their simulation is over, so these claims are settled like the rest.
+    if (time > encounter.stop || !person.alive(time)) {
       // STATUS1 for Payer1
       s.append("CLOSED,");
       // STATUS2 for Payer2

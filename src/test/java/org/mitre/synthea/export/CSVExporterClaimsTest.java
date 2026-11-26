@@ -6,10 +6,13 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.nio.file.Files;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.ClassRule;
 import org.junit.Test;
@@ -21,9 +24,10 @@ import org.mitre.synthea.engine.Generator.GeneratorOptions;
 import org.mitre.synthea.export.Exporter.ExporterRuntimeOptions;
 import org.mitre.synthea.helpers.Config;
 import org.mitre.synthea.helpers.SimpleCSV;
+import org.mitre.synthea.modules.DeathModule;
 
 /**
- * Verifies the payer columns of claims.csv.
+ * Verifies the payer and status columns of claims.csv.
  */
 public class CSVExporterClaimsTest {
 
@@ -53,6 +57,15 @@ public class CSVExporterClaimsTest {
     Config.set("exporter.csv.max_lines_per_file", "");
     Config.set("exporter.csv.append_mode", "false");
     Config.set("exporter.csv.file_number_digits", "");
+  }
+
+  /**
+   * Generate both alive and dead patients again in later tests.
+   */
+  @After
+  public void resetPatientCriteria() {
+    Config.set("generate.only_dead_patients", "false");
+    Config.set("generate.only_alive_patients", "false");
   }
 
   @Test
@@ -102,5 +115,57 @@ public class CSVExporterClaimsTest {
       }
     }
     assertTrue("No claims with secondary insurance were exported", withSecondary > 0);
+  }
+
+  @Test
+  public void testClaimsOfDeceasedPatientsAreClosed() throws Exception {
+    Config.set("exporter.csv.included_files", "claims.csv,encounters.csv");
+    Config.set("generate.only_dead_patients", "true");
+    Config.set("generate.only_alive_patients", "false");
+    CSVExporter.getInstance().init();
+
+    int numberOfPeople = 2;
+    ExporterRuntimeOptions exportOpts = new ExporterRuntimeOptions();
+    GeneratorOptions generatorOpts = new GeneratorOptions();
+    generatorOpts.population = numberOfPeople;
+    generatorOpts.seed = 1717;
+    generatorOpts.clinicianSeed = 1717;
+    generatorOpts.ageSpecified = true;
+    generatorOpts.minAge = 70;
+    generatorOpts.maxAge = 90;
+    Generator generator = new Generator(generatorOpts, exportOpts);
+    generator.options.overflow = false;
+    for (int i = 0; i < numberOfPeople; i++) {
+      generator.generatePerson(i);
+    }
+
+    File csvDir = exportDir.toPath().resolve("csv").toFile();
+    List<LinkedHashMap<String, String>> encounters = SimpleCSV.parse(new String(
+        Files.readAllBytes(csvDir.toPath().resolve("encounters.csv"))));
+    Set<String> deathCertifications = new HashSet<String>();
+    for (Map<String, String> encounter : encounters) {
+      if (encounter.get("CODE").equals(DeathModule.DEATH_CERTIFICATION.code)) {
+        deathCertifications.add(encounter.get("Id"));
+      }
+    }
+    assertEquals(numberOfPeople, deathCertifications.size());
+
+    List<LinkedHashMap<String, String>> claims = SimpleCSV.parse(new String(
+        Files.readAllBytes(csvDir.toPath().resolve("claims.csv"))));
+    assertFalse("No claims were exported", claims.isEmpty());
+    int deathCertificationClaims = 0;
+    for (Map<String, String> claim : claims) {
+      // the simulation of a deceased patient is over, so all of their claims have been settled,
+      // including the death certification that follows their death
+      String claimId = claim.get("Id");
+      assertEquals(claimId, "CLOSED", claim.get("STATUS1"));
+      assertEquals(claimId, "CLOSED", claim.get("STATUSP"));
+      assertEquals(claimId, "0", claim.get("OUTSTANDING1"));
+      assertEquals(claimId, "0", claim.get("OUTSTANDINGP"));
+      if (deathCertifications.contains(claim.get("APPOINTMENTID"))) {
+        deathCertificationClaims++;
+      }
+    }
+    assertEquals(numberOfPeople, deathCertificationClaims);
   }
 }
